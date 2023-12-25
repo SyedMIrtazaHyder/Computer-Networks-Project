@@ -44,7 +44,7 @@ int main() {
     }
 
     // Receive file from client
-    std::ofstream receivedFile("duck", std::ios::binary); // Replace with the desired file extension
+    std::ofstream receivedFile("./user1/ProbabilisticRobotics.pdf", std::ios::binary); // Replace with the desired file extension
     char buffer[MAX_BUFFER_SIZE];
     ssize_t bytesRead;
 

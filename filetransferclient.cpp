@@ -32,7 +32,7 @@ int main() {
     }
 
     // Open file to send
-    std::ifstream fileToSend("./user1/nahar", std::ios::binary); // Replace with the file name and extension
+    std::ifstream fileToSend("./user2/ProbabilisticRobotics.pdf", std::ios::binary); // Replace with the file name and extension
     if (!fileToSend.is_open()) {
         std::cerr << "Unable to open the file." << std::endl;
         return -1;

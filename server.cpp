@@ -100,7 +100,7 @@ void* RecieveFromClient(void* args){
 		string fileToGet = data[1];
 		string peerInfo = p2pClient(fileToGet);
 		send(connfd, peerInfo.c_str(), strlen(peerInfo.c_str()), 0); //sending the details of the client that has the file
-		close(connfd);
+		//close(connfd); WTF why was this giving problems!!!!
 	}
 	// while (1){
 	// 	bzero(buffer, strlen(buffer)); //clearing buffer
@@ -134,8 +134,9 @@ string p2pClient(const string& filename){
 	if (i != ::filesWithIP.end()){
 		vector<string> client_info = ::filesWithIP[filename];
 		string out = "";
-		for (auto i2 = client_info.begin(); i2 != client_info.end(); i2++)
+		for (auto i2 = client_info.begin(); i2 != client_info.end() - 1; i2++)
 			out += *i2 + ",";
+		out += *(client_info.end() - 1);
 		return out;
 	}
 	cerr << "FILE NOT FOUND" << endl;

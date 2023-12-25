@@ -135,12 +135,15 @@ class User{
         cout << "Directory Path: " << directoryPath << endl;
     }
 
-    static void* sendFile(void* args){ //giving it string array which has following pattern {fd, filename}
+    static void* sendFile(void* args){ //giving it string array which has following pattern {fd, filename, directory}, cannot call attr in static function
         string* ptr = static_cast<string*>(args);
-        int fd = stoi(*ptr);
-        string filename = *(ptr + 1);
+        int connfd = stoi(*ptr);
+        string filename = *(ptr+2) + "/" + *(ptr+1);
+        
+        cout << "Sending: " << filename << endl;
+            
         // Open file to send
-        ifstream fileToSend("./user1/nahar", std::ios::binary); // Replace with the file name and extension
+        ifstream fileToSend(filename, std::ios::binary); // Replace with the file name and extension
         if (!fileToSend.is_open()) {
             cerr << "Unable to open the file." << endl;
             return (void*) -1;
@@ -150,11 +153,11 @@ class User{
         char buffer[MAX_BUFFER_SIZE];
         ssize_t bytesRead;
 
-        while ((bytesRead = fileToSend.readsome(buffer, MAX_BUFFER_SIZE)) > 0) {
-            send(fd, buffer, bytesRead, 0);
-        }
+        while ((bytesRead = fileToSend.readsome(buffer, MAX_BUFFER_SIZE)) > 0)
+            send(connfd, buffer, bytesRead, 0);
 
         fileToSend.close();
+        close(connfd);
         cout << "File sent successfully." << endl;
         return (void*) 0; //so successuly file transmission
     }
@@ -233,7 +236,7 @@ class User{
     }
 
     void connectToPeer(string pIP, int pPORT, const string& filename){
-        intptr_t fd = socket(AF_INET, SOCK_STREAM, 0); //again TCP as in UDP no guarentee of packet order
+        int fd = socket(AF_INET, SOCK_STREAM, 0); //again TCP as in UDP no guarentee of packet order
         struct sockaddr_in p_addr;
     	p_addr.sin_family	= AF_INET;
 	    p_addr.sin_port		= htons(pPORT);
@@ -245,7 +248,6 @@ class User{
     	}
 
         send(fd, filename.c_str(), strlen(filename.c_str()), 0);
-        cout << "Sent Data to Clients" << endl;
 
         //Recieving file
         std::ofstream receivedFile(directoryPath + "/" + filename, std::ios::binary); //recieving file as bin chunks and saving in directory
@@ -254,6 +256,7 @@ class User{
 
         while ((bytesRead = recv(fd, buffer, MAX_BUFFER_SIZE, 0)) > 0)
             receivedFile.write(buffer, bytesRead);
+
         receivedFile.close();
         close(fd); //closing connection after sending data
     }
@@ -306,19 +309,15 @@ int main() {
         int UI_thread = pthread_create(&th, NULL, UI, (void*) &user1);
         struct sockaddr_in c_addr;
         socklen_t cliaddr_len = sizeof(c_addr);
-        intptr_t connfd = accept(fd, (struct sockaddr*)&c_addr, &cliaddr_len);
+        int connfd = accept(fd, (struct sockaddr*)&c_addr, &cliaddr_len);
 		if (connfd > 0){
             bzero(buffer, strlen(buffer));//clearing buffer from any garbage it has
             //displayFileNames();
+            if (recv(connfd, buffer, 1000, 0) > 0)
+                cout << "Filename: " << string(buffer) << endl;
 			cout << "Connection found" << endl;
-            string arr[2] = {to_string(connfd), inet_ntoa(c_addr.sin_addr)};
-            //Recieving msg from p2p client of what to send them.
-            if (recv(fd, buffer, strlen(buffer), 0))
-		        {
-                    //buffer only has filename
-                    string arr[2] = {to_string(connfd), string(buffer)};
-                    int file_thread = pthread_create(&th, NULL, user1.sendFile, (void *) arr);
-                }
+            string arr[3] = {to_string(connfd), string(buffer), user1.getDir()};
+            int file_thread = pthread_create(&th, NULL, user1.sendFile, (void *) arr);
 		}
 	} while (1);
     return 0;

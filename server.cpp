@@ -12,17 +12,39 @@
 #include <unistd.h>
 #include <sstream>
 #include <arpa/inet.h>
+#include <algorithm>
+#include <mutex>
+
+// Define your map and mutex to ensure thread safety
 
 #define SERVER_IP "127.0.0.1"
 #define SERVER_PORT 8080
 
 using namespace std;
 map<string, vector<string>> filesWithIP; //files mapped with {IP, Port, Username}
+vector<string> clients;
+mutex clientMutex;
 void* RecieveFromClient(void* args);
 void  displayFileNames();
 void  sendFileNames(int&);
 vector<string> splitString(const string&);
 string p2pClient(const string&); 
+
+
+// mutex clientDataMutex;
+// // Function to delete entries when a client is disconnected
+// void deleteOnDisconnect(const string& clientID) {
+//     lock_guard<mutex> lock(clientDataMutex);
+// 	map<string, vector<string>>::iterator i = filesWithIP.begin();
+//     for (; i!=filesWithIP.end(); i++){
+// 		if (find(i->second.begin(), i->second.end(), clientID) != i->second.end()) {
+// 			filesWithIP.erase(i);
+// 			std::cout << "Client " << clientID << " disconnected and entry removed." << std::endl;
+// 		} else {
+// 			std::cout << "Client " << clientID << " not found in the map." << std::endl;
+// 		}
+// 	}
+// }
 
 int main() {
 	//initializing server
@@ -86,6 +108,7 @@ void* RecieveFromClient(void* args){
 		string cli_PORT = data[2];
 		vector<string> cli_data = {cli_IP, cli_PORT, cli_name};
 		cout << type << " " << cli_name << " " << cli_PORT << endl;
+		clients.push_back(cli_name);
 
         for(vector<string>::iterator i = data.begin()+3; i!=data.end(); i++) //as 1st 3 parts have sender info
             ::filesWithIP.insert(pair<string, vector<string>>(*i, cli_data)); //inserting file with client info on the server
@@ -102,6 +125,8 @@ void* RecieveFromClient(void* args){
 		send(connfd, peerInfo.c_str(), strlen(peerInfo.c_str()), 0); //sending the details of the client that has the file
 		//close(connfd); WTF why was this giving problems!!!!
 	}
+
+	close(connfd);
 	// while (1){
 	// 	bzero(buffer, strlen(buffer)); //clearing buffer
 	// 	if (recv(connfd, buffer, 1000, 0) > 0) {
@@ -117,7 +142,7 @@ void* RecieveFromClient(void* args){
 }
 
 void displayFileNames(){ //function to print all the files present in server at any given time
-    cout << "Here" << endl;
+    cout << "Current Files:" << endl;
     for (const auto& pair : ::filesWithIP)
         cout << "Filename: " << pair.first << endl;
 }

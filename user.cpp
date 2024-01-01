@@ -7,6 +7,8 @@
 #include <unistd.h>
 #include <sys/socket.h>
 #include <cstring>
+#include <any>
+#include <variant>
 
 //Going to the DNS server to get the IP and Port number of the client having the file
 //Can maybe optimize to only show files that user himself doesnt have
@@ -135,32 +137,28 @@ class User{
         cout << "Directory Path: " << directoryPath << endl;
     }
 
-    static void* sendFile(void* args){ //giving it string array which has following pattern {fd, filename, directory}, cannot call attr in static function
-        string* ptr = static_cast<string*>(args);
-        int connfd = stoi(*ptr);
-        string filename = *(ptr+2) + "/" + *(ptr+1);
-        
-        cout << "Sending: " << filename << endl;
+    //Not working so just running in main
+    // bool sendFile(int& connfd, const string& filename){ //giving it string array which has following pattern {fd, filename, directory}, cannot call attr in static function        
+    //     cout << "Sending: " << filename << endl;
             
-        // Open file to send
-        ifstream fileToSend(filename, std::ios::binary); // Replace with the file name and extension
-        if (!fileToSend.is_open()) {
-            cerr << "Unable to open the file." << endl;
-            return (void*) -1;
-        }
+    //     Open file to send
+    //     ifstream fileToSend(filename, std::ios::binary); // Replace with the file name and extension
+    //     if (!fileToSend.is_open()) {
+    //         cerr << "Unable to open the file." << endl;
+    //         return 0;
+    //     }
 
-        // Send file content
-        char buffer[MAX_BUFFER_SIZE];
-        ssize_t bytesRead;
+    //     Send file content
+    //     char buffer[MAX_BUFFER_SIZE];
+    //     ssize_t bytesRead;
 
-        while ((bytesRead = fileToSend.readsome(buffer, MAX_BUFFER_SIZE)) > 0)
-            send(connfd, buffer, bytesRead, 0);
+    //     while ((bytesRead = fileToSend.readsome(buffer, MAX_BUFFER_SIZE)) > 0)
+    //         send(connfd, buffer, bytesRead, 0);
 
-        fileToSend.close();
-        close(connfd);
-        cout << "File sent successfully." << endl;
-        return (void*) 0; //so successuly file transmission
-    }
+    //     fileToSend.close();
+    //     cout << "File sent successfully." << endl;
+    //     return 1; //so successuly file transmission
+    // }
 
     void serverConnect(){//Opening a TCP socket with the server to reliably tell the IP and data to the server
         intptr_t fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -235,7 +233,7 @@ class User{
         //close(fd); //closing connection after sending data
     }
 
-    void connectToPeer(string pIP, int pPORT, const string& filename){
+    void connectToPeer(string pIP, int pPORT, string& filename){
         int fd = socket(AF_INET, SOCK_STREAM, 0); //again TCP as in UDP no guarentee of packet order
         struct sockaddr_in p_addr;
     	p_addr.sin_family	= AF_INET;
@@ -247,15 +245,17 @@ class User{
             exit(-1);
     	}
 
+        filename += "*"; //End of string car
         send(fd, filename.c_str(), strlen(filename.c_str()), 0);
 
         //Recieving file
-        std::ofstream receivedFile(directoryPath + "/" + filename, std::ios::binary); //recieving file as bin chunks and saving in directory
+        std::ofstream receivedFile(directoryPath + "/" + filename.substr(0,filename.size()-1), std::ios::binary); //recieving file as bin chunks and saving in directory
         char buffer[MAX_BUFFER_SIZE];
         ssize_t bytesRead;
 
         while ((bytesRead = recv(fd, buffer, MAX_BUFFER_SIZE, 0)) > 0)
             receivedFile.write(buffer, bytesRead);
+
 
         receivedFile.close();
         close(fd); //closing connection after sending data
@@ -307,17 +307,44 @@ int main() {
     char buffer[1000];
     do{
         int UI_thread = pthread_create(&th, NULL, UI, (void*) &user1);
+        pthread_join(UI_thread, NULL); //add error handling later
+
         struct sockaddr_in c_addr;
         socklen_t cliaddr_len = sizeof(c_addr);
         int connfd = accept(fd, (struct sockaddr*)&c_addr, &cliaddr_len);
 		if (connfd > 0){
-            bzero(buffer, strlen(buffer));//clearing buffer from any garbage it has
-            //displayFileNames();
-            if (recv(connfd, buffer, 1000, 0) > 0)
-                cout << "Filename: " << string(buffer) << endl;
+            memset(buffer, 0, strlen(buffer));//clearing buffer from any garbage it has
+            //displayFileNames();           
+            int c = 0;
+            if (recv(connfd, buffer, 1000, 0) > 0){ //removing terminating char from string
+                for(; c < strlen(buffer); c++)
+                if (buffer[c] == '*')
+                    break;
+            }
+            //Sending file
 			cout << "Connection found" << endl;
-            string arr[3] = {to_string(connfd), string(buffer), user1.getDir()};
-            int file_thread = pthread_create(&th, NULL, user1.sendFile, (void *) arr);
+            //int file_thread = pthread_create(&th, NULL, user1.sendFile, static_cast<void*>(&arr));
+            string filename = user1.getDir() + "/" + string(buffer, c);
+            
+            cout << "Sending: " << filename << endl;
+                
+            // Open file to send
+            ifstream fileToSend(filename, std::ios::binary); // Replace with the file name and extension
+            if (!fileToSend.is_open()) {
+                cerr << "Unable to open the file." << endl;
+                break;
+            }
+
+            // Send file content
+            char buffer[MAX_BUFFER_SIZE];
+            ssize_t bytesRead;
+
+            while ((bytesRead = fileToSend.readsome(buffer, MAX_BUFFER_SIZE)) > 0)
+                send(connfd, buffer, bytesRead, 0);
+
+            fileToSend.close();
+            close(connfd);
+            cout << "File sent successfully." << endl;
 		}
 	} while (1);
     return 0;
@@ -362,9 +389,12 @@ void* UI(void* args){
             default:
                 continue;
         }
-
+        cout << "Choose: " << option << endl;
         if (option == 0)
-            break;
+            {
+                cout << "Exiting" << endl;
+                return (void*) 0;
+            }
     }
     //cout << file << " is " << user1.getFileSize(file) << " bytes" << endl;
     return (void*) 0;

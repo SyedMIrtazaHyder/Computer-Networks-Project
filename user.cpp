@@ -270,7 +270,10 @@ class User{
         return fs::file_size(filename);
     }
 };
-void* UI(void*);
+//void* UI(void*);
+void UI(User&);
+void* sendFile(void*);
+
 
 int main() {
     User user1;
@@ -304,48 +307,13 @@ int main() {
 	//can only thread if return type is void* and has single void* input
 	void *result;
 	void *tempArg;
-    char buffer[1000];
+    //as we just need 1 copy of this thread
+    vector<any> connection_data = {fd, user1.getDir()};//maybe make this thread before main function
+    int listening_thread = pthread_create(&th, NULL, sendFile, static_cast<void*>(&connection_data));
+
     do{
-        int UI_thread = pthread_create(&th, NULL, UI, (void*) &user1);
-        pthread_join(UI_thread, NULL); //add error handling later
-
-        struct sockaddr_in c_addr;
-        socklen_t cliaddr_len = sizeof(c_addr);
-        int connfd = accept(fd, (struct sockaddr*)&c_addr, &cliaddr_len);
-		if (connfd > 0){
-            memset(buffer, 0, strlen(buffer));//clearing buffer from any garbage it has
-            //displayFileNames();           
-            int c = 0;
-            if (recv(connfd, buffer, 1000, 0) > 0){ //removing terminating char from string
-                for(; c < strlen(buffer); c++)
-                if (buffer[c] == '*')
-                    break;
-            }
-            //Sending file
-			cout << "Connection found" << endl;
-            //int file_thread = pthread_create(&th, NULL, user1.sendFile, static_cast<void*>(&arr));
-            string filename = user1.getDir() + "/" + string(buffer, c);
-            
-            cout << "Sending: " << filename << endl;
-                
-            // Open file to send
-            ifstream fileToSend(filename, std::ios::binary); // Replace with the file name and extension
-            if (!fileToSend.is_open()) {
-                cerr << "Unable to open the file." << endl;
-                break;
-            }
-
-            // Send file content
-            char buffer[MAX_BUFFER_SIZE];
-            ssize_t bytesRead;
-
-            while ((bytesRead = fileToSend.readsome(buffer, MAX_BUFFER_SIZE)) > 0)
-                send(connfd, buffer, bytesRead, 0);
-
-            fileToSend.close();
-            close(connfd);
-            cout << "File sent successfully." << endl;
-		}
+        //fix display after sending thread finsihed, or do not display anything when sending thread runs...
+        UI(user1);
 	} while (1);
     return 0;
 }
@@ -362,9 +330,92 @@ vector<string> splitString(const string& inputString) {
     return result;
 }
 
-void* UI(void* args){
-    User* user = (User*) args;
-    User user1(*user);
+void* sendFile(void* args){
+    vector<any> connection_data = *(static_cast<vector<any>*>(args));
+    int fd = any_cast<int>(connection_data[0]);
+    string dir = any_cast<string>(connection_data[1]);
+    char buffer[1000];
+    while(1){
+        struct sockaddr_in c_addr;
+        socklen_t cliaddr_len = sizeof(c_addr);
+        int connfd = accept(fd, (struct sockaddr*)&c_addr, &cliaddr_len);
+        if (connfd > 0){
+            memset(buffer, 0, strlen(buffer));//clearing buffer from any garbage it has
+            //displayFileNames();           
+            int c = 0;
+            if (recv(connfd, buffer, 1000, 0) > 0){ //removing terminating char from string
+                for(; c < strlen(buffer); c++)
+                if (buffer[c] == '*')
+                    break;
+            }
+            //Sending file
+            cout << "Connection found" << endl;
+            //int file_thread = pthread_create(&th, NULL, user1.sendFile, static_cast<void*>(&arr));
+            string filename = dir + "/" + string(buffer, c);    
+            cout << "Sending: " << filename << endl;
+                    
+            // Open file to send
+            ifstream fileToSend(filename, std::ios::binary); // Replace with the file name and extension
+            if (!fileToSend.is_open()) {
+                cerr << "Unable to open the file." << endl;
+                return (void*) 0;
+            }
+
+            // Send file content
+            char buffer[MAX_BUFFER_SIZE];
+            ssize_t bytesRead;
+
+            while ((bytesRead = fileToSend.readsome(buffer, MAX_BUFFER_SIZE)) > 0)
+                send(connfd, buffer, bytesRead, 0);
+
+            fileToSend.close();
+            close(connfd);
+            cout << "File sent successfully." << endl;
+            //return (void*) 1;
+        }
+    }
+    return (void*) 1;
+}
+
+// void* UI(void* args){
+//     User* user = (User*) args;
+//     User user1(*user);
+//     int option;
+//     string filename;
+//     while(1){
+//         cout << "Choose option:\n1.View all files\n2. Get File\n0. Exit" << endl;
+//         cin >> option;
+//         switch (option){
+//             case 0:
+//                 break;
+//             case 1:
+//                 user1.getAllFilenamesFromServer();
+//                 break;
+//             case 2:
+//                 cin.ignore(numeric_limits<std::streamsize>::max(), '\n'); // Clear the input buffer
+//                 cout << "Enter file to get: ";
+//                 cin.clear();
+//                 getline(cin, filename);
+//                 user1.getFileFromServer(filename);
+//                 break;
+//             default:
+//                 continue;
+//         }
+//         cout << "Choose: " << option << endl;
+//         if (option == 0)
+//             {
+//                 cout << "Exiting" << endl;
+//                 return (void*) 0;
+//             }
+//     }
+//     //cout << file << " is " << user1.getFileSize(file) << " bytes" << endl;
+//     return (void*) 0;
+// }
+
+void UI(User& user1){
+    //User* user = (User*) args;
+    //User user1(*user);
+
     int option;
     string filename;
     while(1){
@@ -393,9 +444,9 @@ void* UI(void* args){
         if (option == 0)
             {
                 cout << "Exiting" << endl;
-                return (void*) 0;
+                return;// (void*) 0;
             }
     }
     //cout << file << " is " << user1.getFileSize(file) << " bytes" << endl;
-    return (void*) 0;
+    return;
 }

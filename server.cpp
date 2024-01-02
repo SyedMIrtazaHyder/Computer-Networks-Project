@@ -13,7 +13,6 @@
 #include <sstream>
 #include <arpa/inet.h>
 #include <algorithm>
-#include <mutex>
 
 // Define your map and mutex to ensure thread safety
 
@@ -21,30 +20,15 @@
 #define SERVER_PORT 8080
 
 using namespace std;
-map<string, vector<string>> filesWithIP; //files mapped with {IP, Port, Username}
+multimap<string, vector<string>> filesWithIP; //files mapped with {IP, Port, Username}
 vector<string> clients;
-mutex clientMutex;
 void* RecieveFromClient(void* args);
 void  displayFileNames();
 void  sendFileNames(int&);
 vector<string> splitString(const string&);
 string p2pClient(const string&); 
-
-
-// mutex clientDataMutex;
-// // Function to delete entries when a client is disconnected
-// void deleteOnDisconnect(const string& clientID) {
-//     lock_guard<mutex> lock(clientDataMutex);
-// 	map<string, vector<string>>::iterator i = filesWithIP.begin();
-//     for (; i!=filesWithIP.end(); i++){
-// 		if (find(i->second.begin(), i->second.end(), clientID) != i->second.end()) {
-// 			filesWithIP.erase(i);
-// 			std::cout << "Client " << clientID << " disconnected and entry removed." << std::endl;
-// 		} else {
-// 			std::cout << "Client " << clientID << " not found in the map." << std::endl;
-// 		}
-// 	}
-// }
+void deleteOnDisconnect(const string&);
+bool isInMap(const string&, vector<string>&);
 
 int main() {
 	//initializing server
@@ -111,7 +95,8 @@ void* RecieveFromClient(void* args){
 		clients.push_back(cli_name);
 
         for(vector<string>::iterator i = data.begin()+3; i!=data.end(); i++) //as 1st 3 parts have sender info
-            ::filesWithIP.insert(pair<string, vector<string>>(*i, cli_data)); //inserting file with client info on the server
+			if (!isInMap(*i, cli_data))//for repeated files
+            	::filesWithIP.insert(pair<string, vector<string>>(*i, cli_data)); //inserting file with client info on the server
     	//cout << ::filesWithIP.size() << endl;
     }
 
@@ -123,21 +108,25 @@ void* RecieveFromClient(void* args){
 		string fileToGet = data[1];
 		string peerInfo = p2pClient(fileToGet);
 		send(connfd, peerInfo.c_str(), strlen(peerInfo.c_str()), 0); //sending the details of the client that has the file
-		//close(connfd); WTF why was this giving problems!!!!
+	}
+
+	else if (type == "EXIT"){
+		int c = 0;
+		for(; c < data[1].length(); c++)
+            if (buffer[c] == '*')
+                break;
+		string exiting_user = data[1].substr(0, c-1);
+		cout << "User: " << exiting_user << " has left..." << endl;
+		deleteOnDisconnect(exiting_user);		
+	}
+	
+	else{
+		cout << "Invalid Command to Server..." << endl;
+		char invalid[] = "Invalid Command to Server...";
+		send(connfd, invalid, strlen(invalid), 0);
 	}
 
 	close(connfd);
-	// while (1){
-	// 	bzero(buffer, strlen(buffer)); //clearing buffer
-	// 	if (recv(connfd, buffer, 1000, 0) > 0) {
-	// 		cout.flush();
-	// 		cout<<"\rReceived from client " << name << ": "<< buffer << "|Redirecting to server|" << endl;
-	// 		cout.flush();
-	// 	}
-	// 	else {
-	// 		return (void*) -1;
-	// 	}
-	// }
 	return (void*) 1;
 }
 
@@ -157,7 +146,7 @@ void sendFileNames(int& connfd){ //function to print all the files present in se
 string p2pClient(const string& filename){
 	auto i = ::filesWithIP.find(filename);
 	if (i != ::filesWithIP.end()){
-		vector<string> client_info = ::filesWithIP[filename];
+		vector<string> client_info = i->second;//::filesWithIP[filename];
 		string out = "";
 		for (auto i2 = client_info.begin(); i2 != client_info.end() - 1; i2++)
 			out += *i2 + ",";
@@ -167,6 +156,29 @@ string p2pClient(const string& filename){
 	cerr << "FILE NOT FOUND" << endl;
 	return "";
 }
+
+// Function to delete entries when a client is disconnected
+void deleteOnDisconnect(const string& clientID) {
+	multimap<string, vector<string>>::iterator i = filesWithIP.begin();
+    for (; i!=filesWithIP.end();){
+		if (i->second[2] == clientID)
+			i = filesWithIP.erase(i);
+		else
+			i++;	
+	}
+	cout << "Client " << clientID << " entries have been removed." << endl;
+}
+
+bool isInMap(const string& filename, vector<string>& clientData){
+	auto i = filesWithIP.equal_range(filename); //pair<start_iterator, end_iterator>, as multimap stores sorted keys so sequence == all enteries
+	//type: pair<multimap<string, vector<string>>::iterator, multimap<string, vector<string>>::iterator>
+	for(auto begin = i.first; begin != i.second; begin++)
+		if (clientData == begin->second) //similar entry so no need to add another
+			return true;
+			//::filesWithIP.insert(pair<string, vector<string>>(filename, clientData));
+	return false;
+}
+
 
 vector<string> splitString(const string& inputString) {
     vector<string> result;

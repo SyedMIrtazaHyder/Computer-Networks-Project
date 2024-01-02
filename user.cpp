@@ -122,7 +122,7 @@ class User{
             cerr << "Invalid directory path or directory doesn't exist." << endl;
             return;
         }
-
+        filenames.clear();//clearing any previous data
         for (const auto& entry : fs::directory_iterator(folderPath)) {
             if (fs::is_regular_file(entry.path())) {
                 filenames.push_back(entry.path().filename());
@@ -136,29 +136,6 @@ class User{
         cout << "Username: " << username << endl;
         cout << "Directory Path: " << directoryPath << endl;
     }
-
-    //Not working so just running in main
-    // bool sendFile(int& connfd, const string& filename){ //giving it string array which has following pattern {fd, filename, directory}, cannot call attr in static function        
-    //     cout << "Sending: " << filename << endl;
-            
-    //     Open file to send
-    //     ifstream fileToSend(filename, std::ios::binary); // Replace with the file name and extension
-    //     if (!fileToSend.is_open()) {
-    //         cerr << "Unable to open the file." << endl;
-    //         return 0;
-    //     }
-
-    //     Send file content
-    //     char buffer[MAX_BUFFER_SIZE];
-    //     ssize_t bytesRead;
-
-    //     while ((bytesRead = fileToSend.readsome(buffer, MAX_BUFFER_SIZE)) > 0)
-    //         send(connfd, buffer, bytesRead, 0);
-
-    //     fileToSend.close();
-    //     cout << "File sent successfully." << endl;
-    //     return 1; //so successuly file transmission
-    // }
 
     void serverConnect(){//Opening a TCP socket with the server to reliably tell the IP and data to the server
         intptr_t fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -269,9 +246,48 @@ class User{
         }
         return fs::file_size(filename);
     }
+
+    void userExit(){
+        //Sending message to server that client is leaving hence remove the files it has
+        intptr_t fd = socket(AF_INET, SOCK_STREAM, 0);
+        struct sockaddr_in s_addr;
+    	s_addr.sin_family	= AF_INET;
+	    s_addr.sin_port		= htons(SERVER_PORT);
+	    inet_aton(SERVER_IP, &s_addr.sin_addr);
+        char buffer[1000];
+
+        if (connect(fd, (struct sockaddr*)&s_addr, sizeof(s_addr)) == -1) { //connecting to DNS server
+            perror("Connect failed on socket : ");
+            exit(-1);
+    	}
+
+        string exitMsg = "EXIT," + username + "*";//Last message that server recieves from client
+        send(fd, exitMsg.c_str(), strlen(exitMsg.c_str()), 0);
+        cout << "Sent Exit Msg to Server" << endl;
+        close(fd); //closing connection after sending data
+    }
+
+    void updateServer(){
+        intptr_t fd = socket(AF_INET, SOCK_STREAM, 0);
+        struct sockaddr_in s_addr;
+    	s_addr.sin_family	= AF_INET;
+	    s_addr.sin_port		= htons(SERVER_PORT);
+	    inet_aton(SERVER_IP, &s_addr.sin_addr);
+
+        if (connect(fd, (struct sockaddr*)&s_addr, sizeof(s_addr)) == -1) { //connecting to DNS server
+            perror("Connect failed on socket : ");
+            exit(-1);
+    	}
+
+        cout << "Updating Server" << endl;
+        setFilenamesInDir(directoryPath); //updating file names
+        string myFiles = "HAS," + username + ","+ to_string(PORT) + "," + getFilenamesInDirAsString();//First message to server sharing all files it has
+        send(fd, myFiles.c_str(), strlen(myFiles.c_str()), 0);
+        close(fd); //closing connection after sending data
+    }
 };
 //void* UI(void*);
-void UI(User&);
+bool UI(User&);
 void* sendFile(void*);
 
 
@@ -313,8 +329,7 @@ int main() {
 
     do{
         //fix display after sending thread finsihed, or do not display anything when sending thread runs...
-        UI(user1);
-	} while (1);
+	} while (UI(user1));
     return 0;
 }
 
@@ -412,41 +427,34 @@ void* sendFile(void* args){
 //     return (void*) 0;
 // }
 
-void UI(User& user1){
+bool UI(User& user1){
     //User* user = (User*) args;
     //User user1(*user);
 
     int option;
     string filename;
-    while(1){
-        cout << "Choose option:\n1.View all files\n2. Get File\n0. Exit" << endl;
-        cin >> option;
-        switch (option){
-            case 0:
-                break;
+    cout << "Choose option:\n1.View all files\n2. Get File\n0. Exit" << endl;
+    cin >> option;
+    switch (option){
+        case 0:
+            user1.userExit();
+            return false;
             
-            case 1:
-                user1.getAllFilenamesFromServer();
-                break;
+        case 1:
+            user1.getAllFilenamesFromServer();
+            break;
 
-            case 2:
-                cin.ignore(numeric_limits<std::streamsize>::max(), '\n'); // Clear the input buffer
-                cout << "Enter file to get: ";
-                cin.clear();
-                getline(cin, filename);
-                user1.getFileFromServer(filename);
-                break;
+        case 2:
+            cin.ignore(numeric_limits<std::streamsize>::max(), '\n'); // Clear the input buffer
+            cout << "Enter file to get: ";
+            cin.clear();
+            getline(cin, filename);
+            user1.getFileFromServer(filename);
+            user1.updateServer();
+            break;
 
-            default:
-                continue;
-        }
-        cout << "Choose: " << option << endl;
-        if (option == 0)
-            {
-                cout << "Exiting" << endl;
-                return;// (void*) 0;
-            }
+        default:
+            cout << "Invalid input..." << endl;
     }
-    //cout << file << " is " << user1.getFileSize(file) << " bytes" << endl;
-    return;
+    return true;
 }

@@ -27,6 +27,7 @@ void  displayFileNames();
 void  sendFileNames(int&);
 vector<string> splitString(const string&);
 string p2pClient(const string&); 
+string getUser(const string&);
 void deleteOnDisconnect(const string&);
 bool isInMap(const string&, vector<string>&);
 
@@ -109,7 +110,22 @@ void* RecieveFromClient(void* args){
 		string peerInfo = p2pClient(fileToGet);
 		send(connfd, peerInfo.c_str(), strlen(peerInfo.c_str()), 0); //sending the details of the client that has the file
 	}
-
+	
+	else if (type == "USERS"){
+		string msg;
+		 for (int i = 0; i < clients.size() - 1; i++) {
+        	msg=msg+ clients[i]+",";
+   		}
+		msg += *(clients.end() - 1) + "*";
+		send(connfd,msg.c_str(),strlen(msg.c_str()),0);		
+	}
+	
+	else if (type == "WHO"){
+		string userToGet = data[1];
+		string peerInfo = getUser(userToGet);
+		send(connfd, peerInfo.c_str(), strlen(peerInfo.c_str()), 0); //sending the details of the client file
+	}
+	
 	else if (type == "EXIT"){
 		int c = 0;
 		for(; c < data[1].length(); c++)
@@ -143,6 +159,21 @@ void sendFileNames(int& connfd){ //function to print all the files present in se
     send(connfd, buffer.c_str(), strlen(buffer.c_str()), 0);//sending all filenames available to user
 }
 
+string getUser(const string& username){
+	multimap<string, vector<string>>::iterator i = filesWithIP.begin();
+    string out;
+    for (; i!=filesWithIP.end();){
+		if (i->second[2] == username){
+			out=out+i->second[0]+","+i->second[1];
+			return out;
+			}
+		else
+			i++;	
+	}
+	cout<<"USERNOTFOUND"<<endl;
+	return "";
+}
+
 string p2pClient(const string& filename){
 	auto i = ::filesWithIP.find(filename);
 	if (i != ::filesWithIP.end()){
@@ -151,6 +182,7 @@ string p2pClient(const string& filename){
 		for (auto i2 = client_info.begin(); i2 != client_info.end() - 1; i2++)
 			out += *i2 + ",";
 		out += *(client_info.end() - 1);
+		out += "*";
 		return out;
 	}
 	cerr << "FILE NOT FOUND" << endl;
@@ -167,6 +199,9 @@ void deleteOnDisconnect(const string& clientID) {
 			i++;	
 	}
 	cout << "Client " << clientID << " entries have been removed." << endl;
+	//removing user from vector array
+	::clients.erase(find(::clients.begin(), ::clients.end(), clientID));
+	cout << "Client has disconnected" << endl;
 }
 
 bool isInMap(const string& filename, vector<string>& clientData){

@@ -11,8 +11,6 @@
 #include <variant>
 #include <thread>
 #include <chrono>
-#include <queue>
-#include <ctime>
 
 //Going to the DNS server to get the IP and Port number of the client having the file
 //Can maybe optimize to only show files that user himself doesnt have
@@ -24,8 +22,7 @@ using namespace std;
 namespace fs = std::filesystem;
 
 vector<string> splitString(const string&);
-queue<string> messageBuffer;
-void displayMessage();
+bool isChatting = false;
 
 class User{
     private:
@@ -58,11 +55,8 @@ class User{
         this->username = username;
         this->directoryPath = path;
         this->PORT = PORT;
-        if (!fs::exists(directoryPath) || !fs::is_directory(directoryPath)) {
+        if (!fs::exists(directoryPath) || !fs::is_directory(directoryPath))
             cerr << "Invalid directory path or directory doesn't exist." << std::endl;
-            // You might want to handle this error condition appropriately
-            // For example, you could re-prompt the user for a valid directory path
-        }
         else{
             setFilenamesInDir(this->directoryPath);
         }
@@ -72,11 +66,8 @@ class User{
         this->username = user.username;
         this->PORT = user.PORT;
         this->directoryPath = user.directoryPath;
-        if (!fs::exists(directoryPath) || !fs::is_directory(directoryPath)) {
+        if (!fs::exists(directoryPath) || !fs::is_directory(directoryPath))
             cerr << "Invalid directory path or directory doesn't exist." << std::endl;
-            // You might want to handle this error condition appropriately
-            // For example, you could re-prompt the user for a valid directory path
-        }
         else{
             setFilenamesInDir(this->directoryPath);
         }
@@ -96,11 +87,8 @@ class User{
     }
 
     void setDir(string dir){
-        if (!fs::exists(directoryPath) || !fs::is_directory(directoryPath)) {
+        if (!fs::exists(directoryPath) || !fs::is_directory(directoryPath))
             cerr << "Invalid directory path or directory doesn't exist." << std::endl;
-            // You might want to handle this error condition appropriately
-            // For example, you could re-prompt the user for a valid directory path
-        }
         else
             this->directoryPath = dir;
     }
@@ -211,9 +199,6 @@ class User{
         if (recv(fd, buffer, 1000, 0))
             cout << buffer << endl;
         vector<string> data = splitString(string(buffer));
-        //cout << "Connecting to " << data[2] << endl;
-        //connectToPeer(data[0], stoi(data[1]));
-        //close(fd); //closing connection after sending data
     }
     
     void viewOnlineUsers(){
@@ -229,12 +214,12 @@ class User{
             exit(-1);
     	}
 
-        bzero(buffer, strlen(buffer));
         string msg = "USERS";//First message to server sharing all files it has
         send(fd, msg.c_str(), strlen(msg.c_str()), 0);
         cout << "Sent Request" << endl;
         recv(fd, buffer, 1000, 0);
-        cout << flush << buffer << endl;
+        string output_msg = string(buffer, strlen(buffer));
+        cout << output_msg.substr(0, output_msg.find("*")) << endl;
     	close(fd);
     }
     
@@ -268,6 +253,7 @@ class User{
     }
     
     void connectToPeerChat(string pIP, int pPORT, string& username){
+        bool chatting=false;
         int fd = socket(AF_INET, SOCK_STREAM, 0); //again TCP as in UDP no guarentee of packet order
 
         struct sockaddr_in p_addr;
@@ -279,37 +265,42 @@ class User{
             perror("Connect failed on socket : ");
             exit(-1);
     	}
-        time_t now = time(0); // get current dat/time with respect to system.
-		char* dt = ctime(&now); // convert it into string.
-
-    	string mssg;
-        cout << "Enter Message: ";
-        getline(cin, mssg);
-        mssg = "CHAT:" + string(dt, strlen(dt)) + "->" + this->username + ": " + mssg;
+    	string mssg="CHAT:"+this->username;
 	    send(fd,mssg.c_str(),mssg.size()+1,0);
-        close(fd);
-
-      	// thread([&]() { //initating a thread to listen to the other chatter
-        //     char buffer[1000];
-        //     int bytesRead;
-        //     while ((bytesRead = recv(fd, buffer, sizeof(buffer), 0)) > 0) {
-        //         ::messageBuffer.push(string(buffer, strlen(buffer))); 
-        //     }
-        // }).detach();
+	chatting=true;
+        cout << "Chatting with " << username << endl;
+      	thread([&]() { //initating a thread to listen to the other chatter
+            char buffer[1000];
+            int bytesRead;
+            while ((bytesRead = recv(fd, buffer, sizeof(buffer), 0)) > 0 ) {
+                cout << "\r"<<username<<": " << buffer << endl << flush;
+                // cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');		
+               
+                cout.clear();
+               
+                string mesg(buffer);
+                memset(buffer, '\0', sizeof(buffer));
+                if (mesg.substr(0,5)=="/exit" || chatting==false)  {
+                    cout.clear();
+                    cout << flush << endl << "Other client has left, please enter /exit to leave" << endl;
+                    close(fd);
+                    chatting=false;
+                    break;
+                }
+            }
+        }).detach();
     
-        // while(true){
-        //     char message[1000];
-        //     cout << "Enter Message: ";
-        //     cin >> message;
-        //     if (!::messageBuffer.empty()){
-        //         ::displayMessage();
-        //     }
-        //     if (strcmp(message, "/exit") == 0 || send(fd, message, strlen(message), 0) == -1){
-        //         cout << "Exiting" << endl;
-        //         close(fd);
-        //         return;
-        //     }
-      	// }
+        while(true){
+            string message;
+            getline(cin,message);
+            if (send(fd, message.c_str(), message.size(), 0) == -1 || message.substr(0,5) =="/exit" || chatting==false){
+                cout << "Exiting" << endl;
+                close(fd);
+                chatting=false;
+                break;;
+            }
+      	}
+    return;
     }
     
     void connectToPeer(string pIP, int pPORT, string& filename){
@@ -391,6 +382,7 @@ class User{
 //void* UI(void*);
 bool UI(User&);
 void sendFile(int&, const string&, const string&);
+void startChatting(int&,string);
 void* listener(void*);
 
 int main() {
@@ -428,9 +420,11 @@ int main() {
     //as we just need 1 copy of this thread
     vector<any> connection_data = {fd, user1.getDir()};//maybe make this thread before main function
 	int listening_thread = pthread_create(&th, NULL, listener, static_cast<void*>(&connection_data));	
+    
     do{
         //fix display after sending thread finsihed, or do not display anything when sending thread runs...
-	} while (UI(user1));    return 0;
+	} while (UI(user1));
+    return 0;
 }
 
 vector<string> splitString(const string& inputString) {
@@ -459,6 +453,8 @@ void sendFile(int& connfd, const string& dir, const string& filename){
     ifstream fileToSend(dir + "/" + filename, std::ios::binary); // Replace with the file name and extension
     if (!fileToSend.is_open()) {
         cerr << "Unable to open the file." << endl;
+        buffer = "FILE NO LONGER EXISTS*";
+        send(connfd, buffer, strlen(buffer), 0);
         return;
     }
 
@@ -475,52 +471,60 @@ void sendFile(int& connfd, const string& dir, const string& filename){
     return;
 }
 
-void displayMessage(){
-    while(!::messageBuffer.empty()){
-        cout << messageBuffer.front() << endl;
-        ::messageBuffer.pop();
+void startChatting(int& connfd,string user){
+    cout << "Enter 5 to start chatting with the user..." << endl;
+    auto start = chrono::high_resolution_clock::now();
+    while(!isChatting){
+        auto now = chrono::high_resolution_clock::now();
+        if (chrono::duration_cast<chrono::seconds>(now - start).count() > 10){//if doesnt responds in 10 seconds break
+            cout << "Rejecting Chatting Request" << endl;
+            char exit_msg[] = "/exit";
+            send(connfd, exit_msg, strlen(exit_msg), 0);
+            isChatting = false;
+            return;
+        }
+    } //stuck in this loop until isChatting turned on
+    while(1){
+        thread([&]() {
+            int bytesRead;
+            char buffer[1000];
+            while ((bytesRead = recv(connfd, buffer, sizeof(buffer), 0)) > 0 && isChatting==true) {
+                //clearing any old input in cin
+                // cin.clear();
+                // cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+                cout << "\r"<<user<<": " << buffer << endl << flush;
+                cout.clear();
+               
+                string mesg(buffer);
+                memset(buffer, '\0', sizeof(buffer));
+                if (mesg.substr(0,5)== "/exit" || isChatting==false) {
+                    cout.clear();
+                    cout << flush << "\rOther client has left, please enter /exit to leave" << endl;
+                    close(connfd);
+                   // isChatting=false; //dont run , as it causes UI to start, the variable will become false in below while loop so not a problem
+                    break;
+                }
+            }
+        }).detach();
+    	
+        while(true){
+            string message;
+            getline(cin, message);
+            //cout << message << endl;
+            if (send(connfd, message.c_str(), message.size(), 0) == -1 ||message.substr(0,5) == "/exit" || isChatting==false){
+                cout << "Exiting" << endl;
+                close(connfd);
+                isChatting=false;
+                return;
+            }
+        }
+        isChatting = false;
+        if(isChatting==false)
+        break;
+        
     }
+    return;
 }
-
-// void startChatting(int& connfd){
-//     // cout << "Enter 5 to start chatting with the user..." << endl;
-//     // auto start = chrono::high_resolution_clock::now();
-//     // while(!isChatting){
-//     //     auto now = chrono::high_resolution_clock::now();
-//     //     if (chrono::duration_cast<chrono::seconds>(now - start).count() > 10){//if doesnt responds in 10 seconds break
-//     //         cout << "Rejecting Chatting Request" << endl;
-//     //         // char exit_msg[] = "/exit";
-//     //         // send(connfd, exit_msg, strlen(exit_msg), 0);
-//     //         isChatting = false;
-//     //         return;
-//     //     }
-//     // } //stuck in this loop until isChatting turned on
-//     while(1){
-//         thread([&]() {
-//             int bytesRead;
-//             char buffer[1000];
-//             while ((bytesRead = recv(connfd, buffer, sizeof(buffer), 0)) > 0) {
-//                 //To prevent dumb cout cin issues, going to simply put all msgs in buffer and display after cin
-//                 ::messageBuffer.push(string(buffer, strlen(buffer)));
-//             }
-//         }).detach();
-//         // while(true){
-//         //     char message[1000];
-//         //     cout << "Enter Message: ";
-//         //     cin >> message;
-//         //     // if (!::messageBuffer.empty()){
-//         //     //     displayMessage();
-//         //     // }
-//         //     if (strcmp(message, "/exit") == 0 || send(connfd, message, strlen(message), 0) == -1){
-//         //         cout << "Exiting" << endl;
-//         //         close(connfd);
-//         //         return;
-//         //     }
-//         // }
-//         // isChatting = false;
-//     }
-//     return;
-// }
 
 bool UI(User& user1){
     //User* user = (User*) args;
@@ -529,7 +533,8 @@ bool UI(User& user1){
     int option;
     string filename;
     string username;
-    cout << "Choose option:\n1.View all files\n2. Get File\n3. View Online Users\n4. Send Message\n5. View Messages\n0. Exit" << endl;
+    while (isChatting){} //making UI cin not activate until the isChatting flag is high
+    cout << "Choose option:\n1.View all files\n2. Get File\n3. View Online Users\n4. Chat\n0. Exit" << endl;
     cin >> option;
     switch (option){
         case 0:
@@ -548,7 +553,7 @@ bool UI(User& user1){
             user1.getFileFromServer(filename);
             user1.updateServer();
             break;
-
+                
         case 3:
             user1.viewOnlineUsers();
             break;
@@ -562,12 +567,14 @@ bool UI(User& user1){
             break;
 
         case 5:
-            displayMessage();
+            isChatting = true;
             break;
 
         default:
             cout << "Invalid input..." << endl;
     }
+    cout << "Choose: " << option << endl;
+    //cout << file << " is " << user1.getFileSize(file) << " bytes" << endl;
     return true;
 }
 
@@ -586,21 +593,19 @@ void* listener(void* args){
             //displayFileNames();           
             int c = 0;
             if (recv(connfd, buffer, 1000, 0) > 0){ //removing terminating char from string
-                //cout << "Connection Found" << endl;
+                cout << "Connection Found" << endl;
                 string msg = string(buffer, strlen(buffer));
                 string msg_type = msg.substr(0,4);
-                //cout << msg_type << endl;
+                string user=msg.substr(5);
+                cout << msg_type << endl;
                 int c = 5;
                 for(; c < strlen(buffer); c++)
                     if (buffer[c] == '*')
                         break;           
                 //string msg(buffer, c);
                 //cout << msg_type << " is " << msg << "\n" << msg.substr(5,c-5) << msg.substr(5,c-4) << endl;
-                if (msg_type=="CHAT"){
-                    cout << "New notification" << endl;
-                    ::messageBuffer.push(msg.substr(5,c-5));
-                    close(connfd);
-                }
+                if (msg_type=="CHAT")
+                    startChatting(connfd,user);
                 else if (msg_type=="FILE")
                     sendFile(connfd,dir,msg.substr(5,c-5));
             }

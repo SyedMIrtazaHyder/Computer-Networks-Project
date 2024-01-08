@@ -93,7 +93,8 @@ void* RecieveFromClient(void* args){
 		string cli_PORT = data[2];
 		vector<string> cli_data = {cli_IP, cli_PORT, cli_name};
 		cout << type << " " << cli_name << " " << cli_PORT << endl;
-		clients.push_back(cli_name);
+		if (find(clients.begin(), clients.end(), cli_name) == clients.end()) // so user does not exist
+			clients.push_back(cli_name);
 
         for(vector<string>::iterator i = data.begin()+3; i!=data.end(); i++) //as 1st 3 parts have sender info
 			if (!isInMap(*i, cli_data))//for repeated files

@@ -421,9 +421,7 @@ int main() {
     vector<any> connection_data = {fd, user1.getDir()};//maybe make this thread before main function
 	int listening_thread = pthread_create(&th, NULL, listener, static_cast<void*>(&connection_data));	
     
-    do{
-        //fix display after sending thread finsihed, or do not display anything when sending thread runs...
-	} while (UI(user1));
+    do{} while (UI(user1)); //UI in main thread
     return 0;
 }
 
@@ -453,7 +451,7 @@ void sendFile(int& connfd, const string& dir, const string& filename){
     ifstream fileToSend(dir + "/" + filename, std::ios::binary); // Replace with the file name and extension
     if (!fileToSend.is_open()) {
         cerr << "Unable to open the file." << endl;
-        buffer = "FILE NO LONGER EXISTS*";
+        char buffer[] = "FILE NO LONGER EXISTS*";
         send(connfd, buffer, strlen(buffer), 0);
         return;
     }
@@ -480,7 +478,9 @@ void startChatting(int& connfd,string user){
             cout << "Rejecting Chatting Request" << endl;
             char exit_msg[] = "/exit";
             send(connfd, exit_msg, strlen(exit_msg), 0);
+            close(connfd);
             isChatting = false;
+            cout << "Choose option:\n1.View all files\n2. Get File\n3. View Online Users\n4. Chat\n0. Exit" << endl; //prompting user to continue browsing
             return;
         }
     } //stuck in this loop until isChatting turned on

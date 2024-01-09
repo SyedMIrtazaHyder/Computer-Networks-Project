@@ -157,6 +157,7 @@ void sendFileNames(int& connfd){ //function to print all the files present in se
     string buffer = "";
     for (const auto& pair : ::filesWithIP) //loading buffer with all filenames
         buffer += pair.first + "\n";
+	buffer[buffer.length() - 1] = '*'; //changing terminating character to *
     send(connfd, buffer.c_str(), strlen(buffer.c_str()), 0);//sending all filenames available to user
 }
 
